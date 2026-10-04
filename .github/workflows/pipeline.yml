@@ -1,0 +1,128 @@
+name: CI/CD - Practica 7
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  # Job 1: build, pruebas unitarias con cobertura y publicación del artefacto
+  build-and-test:
+    name: Build, Test & Publish Artifact
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      checks: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Run unit tests with coverage
+        run: npm run test:coverage
+
+      - name: Publish UAT report
+        uses: dorny/test-reporter@v2
+        if: ${{ !cancelled() }}
+        with:
+          name: UAT Report
+          path: reports/junit.xml
+          reporter: java-junit
+
+      - name: Coverage summary
+        uses: irongut/CodeCoverageSummary@v1.3.0
+        if: ${{ !cancelled() }}
+        with:
+          filename: coverage/cobertura-coverage.xml
+          format: markdown
+          output: file
+          badge: true
+          thresholds: "60 80"
+
+      - name: Add coverage to job summary
+        if: ${{ !cancelled() }}
+        run: |
+          echo "## Coverage Report" >> "$GITHUB_STEP_SUMMARY"
+          cat code-coverage-results.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish artifact
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: practica7-build
+          path: |
+            dist/
+            coverage/
+            reports/
+          retention-days: 30
+
+  # Job 2: despliegue al proyecto de Producción en Cloudflare
+  deploy-prod:
+    name: Deploy to Production
+    needs: build-and-test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.deployment-url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: practica7-build
+
+      - name: Apply D1 migrations (Production)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: d1 migrations apply p7-prod --remote --env production
+
+      - name: Deploy Worker (Production)
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy dist/index.js --no-bundle --env production
+
+      - name: Smoke test
+        run: |
+          curl --fail --silent --show-error "${{ steps.deploy.outputs.deployment-url }}/health"

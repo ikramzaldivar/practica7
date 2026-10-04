@@ -1,0 +1,36 @@
+{
+	"name": "practica7-ikram",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-09-27",
+	"observability": {
+		"enabled": true,
+	},
+	"vars": {
+		"ENVIRONMENT": "development",
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "p7",
+			"database_id": "74d0e197-fa0b-4a3a-8962-3e9dae6266c8",
+			"migrations_dir": "migrations",
+		},
+	],
+	"env": {
+		// Ambiente de Producción: Worker y base de datos independientes
+		"production": {
+			"name": "practica7-ikram-prod",
+			"vars": {
+				"ENVIRONMENT": "production",
+			},
+			"d1_databases": [
+				{
+					"binding": "DB",
+					"database_name": "p7-prod",
+					"database_id": "0eec4fee-e061-4530-a5c7-4ab823156cdf",
+					"migrations_dir": "migrations",
+				},
+			],
+		},
+	},
+}
