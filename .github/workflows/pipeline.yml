@@ -125,4 +125,4 @@ jobs:
 
       - name: Smoke test
         run: |
-          curl --fail --silent --show-error "${{ steps.deploy.outputs.deployment-url }}/health"
+          curl --fail --silent --show-error --retry 10 --retry-delay 5 --retry-all-errors "${{ steps.deploy.outputs.deployment-url }}/health"
